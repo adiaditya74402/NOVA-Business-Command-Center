@@ -523,6 +523,10 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 
 .status-dot { animation: nova-pulse 2.2s ease-in-out infinite; }
 
+.compact-view .nova-card { padding: 1rem; }
+.compact-view .nova-card .mt-5 { margin-top: .75rem; }
+.compact-view .nova-card .mt-6 { margin-top: 1rem; }
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; }
 }

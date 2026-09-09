@@ -28,6 +28,12 @@ type Campaign = {
   revenue: number;
   status: 'Active' | 'Completed' | 'Draft';
   period: 'Today' | 'This Week' | 'This Month' | 'This Quarter';
+  description?: string;
+  goal?: string;
+  audiences?: string[];
+  date?: string;
+  budget?: number;
+  optimization?: boolean;
 };
 
 type ProfileAction = 'profile' | 'settings' | 'preferences' | 'help' | 'logout';
@@ -77,6 +83,35 @@ const customerDistribution = [
   { name: 'Premium', value: 19, color: '#f5bd72' }, { name: 'Inactive', value: 14, color: '#607089' },
 ];
 const searchItems = ['Summer Launch', 'Growth Sprint', 'Revenue report', 'Customer segments', 'Campaign approvals'];
+const defaultPreferences: Preferences = { emailAlerts: true, weeklySummary: true, compactView: false };
+
+function loadStoredCampaigns() {
+  if (typeof window === 'undefined') return seedCampaigns;
+  const saved = window.localStorage.getItem('nova-campaigns');
+  if (!saved) return seedCampaigns;
+  try {
+    const parsed = JSON.parse(saved);
+    return Array.isArray(parsed) ? parsed as Campaign[] : seedCampaigns;
+  } catch {
+    return seedCampaigns;
+  }
+}
+
+function loadStoredPreferences() {
+  if (typeof window === 'undefined') return defaultPreferences;
+  const saved = window.localStorage.getItem('nova-preferences');
+  if (!saved) return defaultPreferences;
+  try {
+    const parsed = JSON.parse(saved);
+    return {
+      emailAlerts: typeof parsed.emailAlerts === 'boolean' ? parsed.emailAlerts : defaultPreferences.emailAlerts,
+      weeklySummary: typeof parsed.weeklySummary === 'boolean' ? parsed.weeklySummary : defaultPreferences.weeklySummary,
+      compactView: typeof parsed.compactView === 'boolean' ? parsed.compactView : defaultPreferences.compactView,
+    };
+  } catch {
+    return defaultPreferences;
+  }
+}
 
 function currency(value: number) {
   return `₹${(value / 100000).toFixed(1)}L`;
@@ -87,6 +122,30 @@ function getTimeGreeting() {
   if (hour < 12) return 'Good morning';
   if (hour < 18) return 'Good afternoon';
   return 'Good evening';
+}
+
+function downloadCampaignReport(campaigns: Campaign[]) {
+  const headers = ['Campaign', 'Channel', 'Leads', 'Conversion', 'Revenue', 'Status', 'Period'];
+  const escapeCell = (value: string | number) => `"${String(value).replaceAll('"', '""')}"`;
+  const rows = campaigns.map((campaign) => [
+    campaign.name,
+    campaign.channel,
+    campaign.leads.toLocaleString('en-IN'),
+    `${campaign.conversion.toFixed(1)}%`,
+    currency(campaign.revenue),
+    campaign.status,
+    campaign.period,
+  ]);
+  const csv = [headers, ...rows].map((row) => row.map(escapeCell).join(',')).join('\n');
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement('a');
+  anchor.href = url;
+  anchor.download = `nova-campaign-report-${new Date().toISOString().slice(0, 10)}.csv`;
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 0);
 }
 
 function Badge({ children, tone = 'slate' }: { children: ReactNode; tone?: 'teal' | 'violet' | 'amber' | 'slate' | 'red' }) {
@@ -313,8 +372,8 @@ function ChartCard({ title, children, className = '', action }: { title: string;
   return <div className={`nova-card rounded-2xl p-5 ${className}`}><div className="mb-5 flex items-start justify-between"><div><h3 className="text-sm font-semibold text-slate-100">{title}</h3><p className="mt-1 text-[11px] text-slate-500">Updated 5 minutes ago</p></div><div className="flex items-center gap-2"><IconButton label={`View ${title} details`} onClick={showDetails}><Info size={15} /></IconButton>{action}</div></div>{children}</div>;
 }
 
-function Analytics() {
-  return <section id="analytics" className="nova-appear nova-delay-3"><div className="mb-4 flex items-end justify-between"><div><p className="text-[10px] font-semibold uppercase tracking-[.18em] text-violet-300/80">Chart</p><h2 className="mt-2 text-xl font-semibold text-slate-100">Performance Analytics</h2></div><button type="button" data-testid="button-download-report" onClick={() => window.dispatchEvent(new CustomEvent('nova-toast', { detail: 'Report downloaded successfully.' }))} className="hidden items-center gap-2 rounded-lg border border-white/[.09] px-3 py-2 text-xs text-slate-300 hover:bg-white/[.05] sm:flex"><Download size={14} /> Download report</button></div>
+function Analytics({ campaigns, pushToast }: { campaigns: Campaign[]; pushToast: (message: string) => void }) {
+  return <section id="analytics" className="nova-appear nova-delay-3"><div className="mb-4 flex items-end justify-between"><div><p className="text-[10px] font-semibold uppercase tracking-[.18em] text-violet-300/80">Chart</p><h2 className="mt-2 text-xl font-semibold text-slate-100">Performance Analytics</h2></div><button type="button" data-testid="button-download-report" onClick={() => { downloadCampaignReport(campaigns); pushToast('Report downloaded successfully.'); }} className="hidden items-center gap-2 rounded-lg border border-white/[.09] px-3 py-2 text-xs text-slate-300 hover:bg-white/[.05] sm:flex"><Download size={14} /> Download report</button></div>
      <div className="grid gap-4 xl:grid-cols-[1.12fr_1fr_1fr]"><ChartCard title="Revenue by Channel"><ResponsiveContainer width="100%" height={235}><BarChart data={revenueByChannel} barSize={22}><CartesianGrid stroke="rgba(148,163,184,.1)" vertical={false} /><XAxis dataKey="name" tick={{ fill: '#748198', fontSize: 10 }} axisLine={false} tickLine={false} /><YAxis tick={{ fill: '#748198', fontSize: 10 }} axisLine={false} tickLine={false} tickFormatter={(v) => `₹${v}k`} /><ChartTooltip contentStyle={{ background: 'hsl(var(--popover))', border: '1px solid hsl(var(--popover-border))', color: 'hsl(var(--popover-foreground))', borderRadius: 10, fontSize: 11 }} formatter={(value) => [`₹${value}k`, 'Revenue']} /><Bar dataKey="revenue" fill="hsl(var(--chart-1))" radius={[5, 5, 0, 0]} /></BarChart></ResponsiveContainer></ChartCard>
        <ChartCard title="Revenue Growth"><ResponsiveContainer width="100%" height={235}><LineChart data={revenueGrowth}><CartesianGrid stroke="rgba(148,163,184,.1)" vertical={false} /><XAxis dataKey="month" tick={{ fill: '#748198', fontSize: 10 }} axisLine={false} tickLine={false} /><YAxis tick={{ fill: '#748198', fontSize: 10 }} axisLine={false} tickLine={false} tickFormatter={(v) => `₹${v}L`} /><ChartTooltip contentStyle={{ background: 'hsl(var(--popover))', border: '1px solid hsl(var(--popover-border))', color: 'hsl(var(--popover-foreground))', borderRadius: 10, fontSize: 11 }} formatter={(value) => [`₹${value}L`, 'Revenue']} /><Line type="monotone" dataKey="revenue" stroke="hsl(var(--chart-2))" strokeWidth={3} dot={{ fill: 'hsl(var(--chart-2))', strokeWidth: 0, r: 3 }} /></LineChart></ResponsiveContainer></ChartCard>
        <ChartCard title="Customer Distribution"><ResponsiveContainer width="100%" height={235}><PieChart><Pie data={customerDistribution} innerRadius={55} outerRadius={82} paddingAngle={4} dataKey="value" stroke="none">{customerDistribution.map((entry) => <Cell key={entry.name} fill={entry.color} />)}</Pie><ChartTooltip contentStyle={{ background: 'hsl(var(--popover))', border: '1px solid hsl(var(--popover-border))', color: 'hsl(var(--popover-foreground))', borderRadius: 10, fontSize: 11 }} formatter={(value) => [`${value}%`, 'Customers']} /><Legend verticalAlign="bottom" iconType="circle" iconSize={7} formatter={(value) => <span className="text-[10px] text-slate-400">{value}</span>} /></PieChart></ResponsiveContainer></ChartCard>
@@ -355,7 +414,7 @@ function CampaignBuilder({ onPublish, pushToast }: { onPublish: (campaign: Campa
   }, []);
   const toggleAudience = (value: string) => setAudiences((current) => current.includes(value) ? current.filter((item) => item !== value) : [...current, value]);
   const validate = () => { if (!name.trim()) { setError('Campaign name is required.'); return; } if (description.trim().length < 12) { setError('Add a short description of at least 12 characters.'); return; } if (!audiences.length) { setError('Select at least one target audience.'); return; } setError(''); setConfirm(true); };
-  const publish = () => { onPublish({ id: Date.now(), name: name.trim(), channel, leads: 0, conversion: 0, revenue: 0, status: live ? 'Active' : 'Draft', period: 'This Month' }); setConfirm(false); setName(''); setDescription(''); setAudiences(['New Customers']); pushToast('Campaign created successfully.'); };
+   const publish = () => { onPublish({ id: Date.now(), name: name.trim(), channel, leads: 0, conversion: 0, revenue: 0, status: live ? 'Active' : 'Draft', period: 'This Month', description: description.trim(), goal, audiences, date, budget, optimization }); setConfirm(false); setName(''); setDescription(''); setAudiences(['New Customers']); pushToast('Campaign created successfully.'); };
   return <section id="builder" className="nova-card rounded-2xl p-5 sm:p-6"><div className="mb-7 flex flex-col justify-between gap-3 sm:flex-row sm:items-start"><div><p className="text-[10px] font-semibold uppercase tracking-[.18em] text-violet-300/80">Form · input field · radio · checkbox · date picker</p><h2 className="mt-2 text-xl font-semibold text-slate-100">Campaign Builder</h2><p className="mt-1 text-xs text-slate-500">Turn a clear intention into the next growth experiment.</p></div><Badge tone={live ? 'teal' : 'slate'}>{live ? 'Ready to publish' : 'Saved as draft'}</Badge></div>
     <div className="grid gap-x-8 gap-y-6 lg:grid-cols-2"><label className="block text-xs text-slate-400">Campaign name <span className="text-teal-300">*</span><input aria-label="Campaign name" data-testid="input-campaign-name" value={name} onChange={(e) => setName(e.target.value)} placeholder="Enter campaign name" className={`mt-2 h-11 w-full rounded-xl border bg-white/[.035] px-3 text-sm text-slate-100 outline-none placeholder:text-slate-600 focus:border-teal-300/60 ${error && !name ? 'border-red-300/50' : 'border-white/[.1]'}`} /></label>
       <label className="block text-xs text-slate-400">Marketing channel<select aria-label="Builder marketing channel" data-testid="select-builder-channel" value={channel} onChange={(e) => setChannel(e.target.value)} className="mt-2 h-11 w-full rounded-xl border border-white/[.1] bg-[#121d30] px-3 text-sm text-slate-200 outline-none focus:border-teal-300/60"><option>Instagram</option><option>Google</option><option>Email</option><option>LinkedIn</option><option>YouTube</option></select></label>
@@ -391,11 +450,11 @@ function AppShell() {
   const [unreadNotifications, setUnreadNotifications] = useState(3);
   const [profileOpen, setProfileOpen] = useState(false);
   const [profileDialog, setProfileDialog] = useState<ProfileAction | null>(null);
-  const [preferences, setPreferences] = useState<Preferences>({ emailAlerts: true, weeklySummary: true, compactView: false });
+  const [preferences, setPreferences] = useState<Preferences>(loadStoredPreferences);
   const [greeting, setGreeting] = useState(getTimeGreeting);
   const [date, setDate] = useState('2026-03-24');
   const [search, setSearch] = useState('');
-  const [campaigns, setCampaigns] = useState(seedCampaigns);
+  const [campaigns, setCampaigns] = useState<Campaign[]>(loadStoredCampaigns);
   const [deleteTarget, setDeleteTarget] = useState<Campaign | null>(null);
   const [toasts, setToasts] = useState<string[]>([]);
   const [briefExpanded, setBriefExpanded] = useState(false);
@@ -405,23 +464,32 @@ function AppShell() {
     return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
   });
   const pushToast = (message: string) => { setToasts((current) => [...current.filter((item) => item !== message), message]); window.setTimeout(() => setToasts((current) => current.filter((item) => item !== message)), 4200); };
+  const handleSearchSelect = (result: string) => {
+    const target = result === 'Customer segments' ? 'insights' : result === 'Revenue report' ? 'analytics' : result === 'Campaign approvals' ? 'campaigns' : 'campaigns';
+    setActive(target);
+    setSearch('');
+    document.getElementById(target)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    pushToast(`Opened ${result}.`);
+  };
   useEffect(() => { const handler = (event: Event) => pushToast((event as CustomEvent<string>).detail); window.addEventListener('nova-toast', handler); return () => window.removeEventListener('nova-toast', handler); }, []);
   useEffect(() => {
     document.documentElement.classList.toggle('dark', theme === 'dark');
     document.documentElement.style.colorScheme = theme;
     window.localStorage.setItem('nova-theme', theme);
   }, [theme]);
+  useEffect(() => { window.localStorage.setItem('nova-campaigns', JSON.stringify(campaigns)); }, [campaigns]);
+  useEffect(() => { window.localStorage.setItem('nova-preferences', JSON.stringify(preferences)); }, [preferences]);
   useEffect(() => { const timer = window.setInterval(() => setGreeting(getTimeGreeting()), 60000); return () => window.clearInterval(timer); }, []);
   useEffect(() => { const escape = (event: KeyboardEvent) => { if (event.key === 'Escape') { setMobileOpen(false); setNotificationsOpen(false); setProfileOpen(false); setProfileDialog(null); setDeleteTarget(null); } }; window.addEventListener('keydown', escape); return () => window.removeEventListener('keydown', escape); }, []);
   const handleProfileAction = (action: ProfileAction) => { setProfileOpen(false); setProfileDialog(action); };
   const togglePreference = (key: keyof Preferences) => { setPreferences((current) => ({ ...current, [key]: !current[key] })); pushToast('Preference updated.'); };
   const removeCampaign = () => { if (!deleteTarget) return; setCampaigns((current) => current.filter((item) => item.id !== deleteTarget.id)); setDeleteTarget(null); pushToast('Campaign deleted.'); };
   const searchResults = useMemo(() => searchItems.filter((item) => item.toLowerCase().includes(search.toLowerCase())).slice(0, 5), [search]);
-    return <div className="min-h-[100dvh] overflow-x-hidden text-slate-100"><div className="nova-grid pointer-events-none fixed inset-0 z-0 opacity-25" /><Sidebar active={active} setActive={setActive} open={mobileOpen} setOpen={setMobileOpen} /><div className="relative z-10 md:pl-[248px]"><Header setMobileOpen={() => setMobileOpen(true)} onNotify={() => setNotificationsOpen(!notificationsOpen)} notificationsOpen={notificationsOpen} unreadCount={unreadNotifications} markNotificationsRead={() => setUnreadNotifications(0)} profileOpen={profileOpen} setProfileOpen={setProfileOpen} onProfileAction={handleProfileAction} search={search} onSearch={setSearch} searchResults={searchResults} onSearchSelect={(result) => { setSearch(''); pushToast(`Opened ${result}.`); }} theme={theme} onThemeToggle={() => setTheme((current) => current === 'dark' ? 'light' : 'dark')} />
-       <main className="mx-auto max-w-[1520px] px-4 py-7 sm:px-6 lg:px-10 lg:py-10"><div className="mb-8 flex flex-col gap-5 xl:flex-row xl:items-end xl:justify-between"><div id="overview" className="scroll-mt-28"><div className="flex items-center gap-2 text-[11px] text-slate-500"><Home size={13} /> Dashboard <ChevronRight size={12} /> <span className="text-slate-300">Campaign performance</span></div><h1 className="mt-5 text-3xl font-semibold tracking-tight text-slate-100 sm:text-4xl">{greeting}, operator</h1><p className="mt-2 max-w-lg text-sm text-slate-500">Here’s what’s happening with your business today.</p><div className="mt-5 flex flex-wrap gap-2"><button type="button" data-testid="button-explore-dashboard" onClick={() => document.getElementById('campaigns')?.scrollIntoView({ behavior: 'smooth' })} className="inline-flex min-h-10 items-center gap-2 rounded-xl bg-teal-300 px-4 text-xs font-semibold text-[#0b1221] transition hover:bg-teal-200">Explore Dashboard <ArrowUpRight size={14} /></button><button type="button" data-testid="button-view-reports" onClick={() => document.getElementById('analytics')?.scrollIntoView({ behavior: 'smooth' })} className="inline-flex min-h-10 items-center gap-2 rounded-xl border border-white/[.1] px-4 text-xs font-medium text-slate-300 transition hover:bg-white/[.05]">View Reports <FileText size={14} /></button></div></div><div className="flex flex-col gap-3 sm:flex-row sm:items-center"><div className="relative min-w-0 flex-1 sm:w-[280px]"><Search size={16} className="pointer-events-none absolute left-3 top-3 text-slate-500" /><input aria-label="Search customers, campaigns, reports" data-testid="input-dashboard-search" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search customers, campaigns, reports…" className="h-10 w-full rounded-xl border border-white/[.1] bg-white/[.035] pl-9 pr-3 text-xs text-slate-100 outline-none placeholder:text-slate-600 focus:border-teal-300/60" />{search && <div className="absolute left-0 right-0 top-12 z-40 rounded-xl border border-white/[.1] bg-[#111b2d] p-1 shadow-xl">{searchResults.length ? searchResults.map((result) => <button type="button" key={result} data-testid={`search-result-${result.toLowerCase().replaceAll(' ', '-')}`} onClick={() => { setSearch(''); pushToast(`Opened ${result}.`); }} className="flex w-full items-center gap-2 rounded-lg px-3 py-2.5 text-left text-xs text-slate-300 hover:bg-white/[.05]"><Search size={13} className="text-teal-300" />{result}<ArrowUpRight size={13} className="ml-auto text-slate-600" /></button>) : <p className="px-3 py-3 text-xs text-slate-500">No matching records.</p>}</div>}</div><label className="relative flex h-10 items-center gap-2 rounded-xl border border-white/[.1] bg-white/[.035] px-3 text-xs text-slate-400"><CalendarDays size={15} className="text-teal-300" /><input aria-label="Reporting date" data-testid="input-reporting-date" type="date" value={date} onChange={(e) => { setDate(e.target.value); pushToast('Reporting date updated.'); }} className="w-[125px] bg-transparent text-xs text-slate-300 outline-none" /></label></div></div>
+   return <div className={`min-h-[100dvh] overflow-x-hidden text-slate-100 ${preferences.compactView ? 'compact-view' : ''}`}><div className="nova-grid pointer-events-none fixed inset-0 z-0 opacity-25" /><Sidebar active={active} setActive={setActive} open={mobileOpen} setOpen={setMobileOpen} /><div className="relative z-10 md:pl-[248px]"><Header setMobileOpen={() => setMobileOpen(true)} onNotify={() => setNotificationsOpen(!notificationsOpen)} notificationsOpen={notificationsOpen} unreadCount={unreadNotifications} markNotificationsRead={() => setUnreadNotifications(0)} profileOpen={profileOpen} setProfileOpen={setProfileOpen} onProfileAction={handleProfileAction} search={search} onSearch={setSearch} searchResults={searchResults} onSearchSelect={handleSearchSelect} theme={theme} onThemeToggle={() => setTheme((current) => current === 'dark' ? 'light' : 'dark')} />
+       <main className="mx-auto max-w-[1520px] px-4 py-7 sm:px-6 lg:px-10 lg:py-10"><div className="mb-8 flex flex-col gap-5 xl:flex-row xl:items-end xl:justify-between"><div id="overview" className="scroll-mt-28"><div className="flex items-center gap-2 text-[11px] text-slate-500"><Home size={13} /> Dashboard <ChevronRight size={12} /> <span className="text-slate-300">Campaign performance</span></div><h1 className="mt-5 text-3xl font-semibold tracking-tight text-slate-100 sm:text-4xl">{greeting}, operator</h1><p className="mt-2 max-w-lg text-sm text-slate-500">Here’s what’s happening with your business today.</p><div className="mt-5 flex flex-wrap gap-2"><button type="button" data-testid="button-explore-dashboard" onClick={() => document.getElementById('campaigns')?.scrollIntoView({ behavior: 'smooth' })} className="inline-flex min-h-10 items-center gap-2 rounded-xl bg-teal-300 px-4 text-xs font-semibold text-[#0b1221] transition hover:bg-teal-200">Explore Dashboard <ArrowUpRight size={14} /></button><button type="button" data-testid="button-view-reports" onClick={() => document.getElementById('analytics')?.scrollIntoView({ behavior: 'smooth' })} className="inline-flex min-h-10 items-center gap-2 rounded-xl border border-white/[.1] px-4 text-xs font-medium text-slate-300 transition hover:bg-white/[.05]">View Reports <FileText size={14} /></button></div></div><div className="flex flex-col gap-3 sm:flex-row sm:items-center"><div className="relative min-w-0 flex-1 sm:w-[280px]"><Search size={16} className="pointer-events-none absolute left-3 top-3 text-slate-500" /><input aria-label="Search customers, campaigns, reports" data-testid="input-dashboard-search" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search customers, campaigns, reports…" className="h-10 w-full rounded-xl border border-white/[.1] bg-white/[.035] pl-9 pr-3 text-xs text-slate-100 outline-none placeholder:text-slate-600 focus:border-teal-300/60" />{search && <div className="absolute left-0 right-0 top-12 z-40 rounded-xl border border-white/[.1] bg-[#111b2d] p-1 shadow-xl">{searchResults.length ? searchResults.map((result) => <button type="button" key={result} data-testid={`search-result-${result.toLowerCase().replaceAll(' ', '-')}`} onClick={() => handleSearchSelect(result)} className="flex w-full items-center gap-2 rounded-lg px-3 py-2.5 text-left text-xs text-slate-300 hover:bg-white/[.05]"><Search size={13} className="text-teal-300" />{result}<ArrowUpRight size={13} className="ml-auto text-slate-600" /></button>) : <p className="px-3 py-3 text-xs text-slate-500">No matching records.</p>}</div>}</div><label className="relative flex h-10 items-center gap-2 rounded-xl border border-white/[.1] bg-white/[.035] px-3 text-xs text-slate-400"><CalendarDays size={15} className="text-teal-300" /><input aria-label="Reporting date" data-testid="input-reporting-date" type="date" value={date} onChange={(e) => { setDate(e.target.value); pushToast('Reporting date updated.'); }} className="w-[125px] bg-transparent text-xs text-slate-300 outline-none" /></label></div></div>
       <section aria-label="Performance overview" className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4"><KpiCard label="Revenue" value="₹24.8L" change="+18.4%" icon={WalletCards} tone="bg-teal-300/10" spark="M0 26 C12 26 14 22 24 24 S37 15 46 19 S57 10 66 14 S77 3 86 5" /><KpiCard label="Customers" value="12,842" change="+12.7%" icon={Users} tone="bg-violet-300/10" spark="M0 25 C12 21 16 24 26 18 S39 21 48 12 S59 14 68 8 S79 10 86 3" /><KpiCard label="Conversion rate" value="8.64%" change="+2.3%" icon={TrendingUp} tone="bg-amber-300/10" spark="M0 27 C10 24 18 26 26 20 S42 23 48 16 S64 19 71 10 S80 12 86 4" /><KpiCard label="Active campaigns" value="24" change="+6.1%" icon={Radio} tone="bg-blue-300/10" spark="M0 25 C12 23 18 17 27 21 S39 13 48 17 S59 7 69 12 S78 6 86 6" /></section>
       <div className="mt-6"><div className="nova-card relative overflow-hidden rounded-2xl border-teal-300/10 p-5 sm:p-6"><div className="absolute right-0 top-0 h-full w-1/2 bg-gradient-to-l from-teal-300/[.06] to-transparent" /><div className="relative flex flex-col gap-5 md:flex-row md:items-center md:justify-between"><div><div className="flex items-center gap-2"><span className="status-dot h-2 w-2 rounded-full bg-teal-300" /><p className="text-[10px] font-semibold uppercase tracking-[.18em] text-teal-200/80">AI Business Brief</p></div><p className={`mt-4 max-w-3xl text-base leading-7 text-slate-200 ${briefExpanded ? '' : 'line-clamp-2'}`}>Your business is trending upward this month. Revenue is up 18.4%, while Instagram is currently your highest-performing acquisition channel. Returning customers have increased by 11%, and the current mix is giving you room to invest in higher-intent search.</p><p className="mt-3 flex items-center gap-2 text-[11px] text-slate-600"><Clock3 size={12} /> Analysis updated 5 minutes ago</p></div><button type="button" data-testid="button-expand-brief" onClick={() => setBriefExpanded(!briefExpanded)} className="shrink-0 self-start rounded-lg border border-white/[.1] px-3 py-2 text-xs text-slate-300 hover:bg-white/[.05]">{briefExpanded ? 'Show less' : 'Read full brief'}</button></div></div></div>
-      <div className="mt-6"><CampaignTable campaigns={campaigns} onDelete={setDeleteTarget} /></div><div className="mt-8"><Analytics /></div><div className="mt-8"><Insights /></div><div className="mt-8"><CampaignBuilder onPublish={(campaign) => setCampaigns((current) => [campaign, ...current])} pushToast={pushToast} /></div><div className="mt-8"><GoalAndHelp pushToast={pushToast} /></div>
+       <div className="mt-6"><CampaignTable campaigns={campaigns} onDelete={setDeleteTarget} /></div><div className="mt-8"><Analytics campaigns={campaigns} pushToast={pushToast} /></div><div className="mt-8"><Insights /></div><div className="mt-8"><CampaignBuilder onPublish={(campaign) => setCampaigns((current) => [campaign, ...current])} pushToast={pushToast} /></div><div className="mt-8"><GoalAndHelp pushToast={pushToast} /></div>
       <footer className="mt-14 flex flex-col gap-5 border-t border-white/[.07] py-8 text-xs text-slate-500 sm:flex-row sm:items-end sm:justify-between"><div><p className="font-serif text-2xl tracking-wide text-slate-200">NOVA</p><p className="mt-1">Smarter decisions. Better business.</p><p className="mt-5 text-[11px] text-slate-600">© 2026 NOVA Analytics</p></div><div className="flex flex-wrap gap-x-5 gap-y-2 sm:justify-end"><button type="button" data-testid="footer-dashboard" onClick={() => document.getElementById('overview')?.scrollIntoView({ behavior: 'smooth' })} className="hover:text-teal-200">Dashboard</button><button type="button" data-testid="footer-analytics" onClick={() => document.getElementById('analytics')?.scrollIntoView({ behavior: 'smooth' })} className="hover:text-teal-200">Analytics</button><button type="button" data-testid="footer-reports" onClick={() => pushToast('Reports are ready in Performance Analytics.')} className="hover:text-teal-200">Reports</button><button type="button" data-testid="footer-help" onClick={() => document.getElementById('help')?.scrollIntoView({ behavior: 'smooth' })} className="hover:text-teal-200">Help</button><button type="button" data-testid="footer-privacy" onClick={() => pushToast('Privacy controls are managed by your workspace administrator.')} className="hover:text-teal-200">Privacy</button><button type="button" data-testid="footer-terms" onClick={() => pushToast('NOVA Terms of Service opened.')} className="hover:text-teal-200">Terms</button></div></footer>
      </main></div>
     {deleteTarget && <div role="alertdialog" aria-modal="true" className="fixed inset-0 z-[60] grid place-items-center bg-slate-950/85 p-4"><div className="w-full max-w-sm rounded-2xl border border-red-300/20 bg-[#171522] p-6 shadow-2xl"><div className="grid h-10 w-10 place-items-center rounded-xl bg-red-400/10 text-red-200"><Trash2 size={18} /></div><h3 className="mt-5 text-lg font-semibold text-slate-100">Delete Campaign?</h3><p className="mt-2 text-sm leading-6 text-slate-400">Are you sure you want to delete <span className="text-slate-200">{deleteTarget.name}</span>? This action cannot be undone.</p><div className="mt-6 flex justify-end gap-2"><button type="button" data-testid="button-cancel-delete" onClick={() => setDeleteTarget(null)} className="rounded-xl px-4 py-2.5 text-sm text-slate-400 hover:bg-white/[.05]">Cancel</button><button type="button" data-testid="button-confirm-delete" onClick={removeCampaign} className="rounded-xl bg-red-400/15 px-4 py-2.5 text-sm font-medium text-red-200 hover:bg-red-400/25">Delete</button></div></div></div>}
