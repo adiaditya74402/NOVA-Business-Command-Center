@@ -1,6 +1,6 @@
-# [Project name]
+# NOVA — Smart Business Command Center
 
-_Replace the heading above with the project's name, and this line with one sentence describing what this app does for users._
+NOVA is a responsive business intelligence dashboard for monitoring revenue, campaigns, customers, reports, and planning workflows.
 
 ## Run & Operate
 
@@ -22,15 +22,21 @@ _Replace the heading above with the project's name, and this line with one sente
 
 ## Where things live
 
-_Populate as you build — short repo map plus pointers to the source-of-truth file for DB schema, API contracts, theme files, etc._
+- `artifacts/nova-command-center/src/App.tsx` — dashboard shell, page sections, charts, campaign builder, and interactive states
+- `artifacts/nova-command-center/src/index.css` — NOVA theme tokens and responsive utility styles
+- `artifacts/nova-command-center/.replit-artifact/artifact.toml` — web artifact routing and managed workflow
 
 ## Architecture decisions
 
-_Populate as you build — non-obvious choices a reader couldn't infer from the code (3-5 bullets)._
+- The dashboard is frontend-only and uses the repository's realistic sample data for its first build.
+- Navigation is implemented as in-page dashboard views so the full command center remains fast and usable in a single workspace.
+- The artifact is served at `/` to keep the primary app available from the project root.
 
 ## Product
 
-_Describe the high-level user-facing capabilities of this app once they exist._
+- Overview dashboard with revenue, customer, conversion, and campaign KPIs
+- Campaign performance filtering, sorting, deletion confirmation, and campaign builder flow
+- Analytics, customer insights, reports, tasks, settings, notifications, profile actions, theme switching, and responsive navigation
 
 ## User preferences
 
